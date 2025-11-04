@@ -227,9 +227,9 @@ module load cutadapt/4.9
 module load bio/kallisto/0.48.0-gcc-11.4.0
 module load r/4.4.0
 #conda create -n py2 python=2.7.12
-conda init
-conda activate py2
-conda activate pro_seq
+#conda init
+#conda activate py2
+#conda activate pro_seq
 #module load python/2.7.12
 
 
