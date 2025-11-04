@@ -1,4 +1,5 @@
 #!/bin/bash
+
 usage()
 {
     echo "unknown option: ${1}

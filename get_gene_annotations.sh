@@ -71,7 +71,7 @@ stranded=rf-stranded
 single=0
 expname=
 ref=
-kalIndex=
+kalIndex=/global/scratch/users/chadbstein/genomes/hg38_KSHV/hg38.basic_trimd.comprehensive.idx
 tpm=0
 numSamples=1
 mintrim=
@@ -83,11 +83,10 @@ tsscallWindow=1000
 useProseq=1
 stopAtGTFfilter=0
 tsscallTime=1500
-tsscallPartition=medium
-gtf=
-kalIndex=
-txInfo=
-chrsizes=
+tsscallPartition=savio2_htc
+gtf=/global/scratch/users/chadbstein/genomes/hg38_KSHV/hg38.kshv.basic.gtf
+txInfo=/global/scratch/users/chadbstein/genomes/hg38_KSHV/hg38.kshv.basic.transcripts.to.genes.info.txt
+chrsizes=/global/scratch/users/chadbstein/genomes/hg38_KSHV/hg38_NC_009333.1.chrom.sizes
 admin=0
 
 while [ "$1" != "" ]; do
@@ -222,12 +221,15 @@ mkdir -p logs
 
 echo "loading modules"
 module purge
-module load gcc/6.2.0
-module load python/2.7.12
-module load cutadapt/1.14
-module load kallisto/0.45.1
-module load R/4.0.1
-module load python/2.7.12
+module load gcc/13.2.0
+module load anaconda3/2024.02-1-11.4
+module load cutadapt/4.9
+module load bio/kallisto/0.48.0-gcc-11.4.0
+module load r/4.4.0
+#conda create -n py2 python=2.7.12
+conda activate py2
+conda activate pro_seq
+#module load python/2.7.12
 
 
 #clean up manifest file
@@ -270,7 +272,7 @@ if [ "$processfastq" -eq 1 ]; then
                         echo $samplename
                         #assemble a list of the jobids for the sbatch submissions (kallisto_jobids)
                         fastq_jobids=""
-                        kjob_id=($(sbatch -p short --mem=30G -t 360 --parsable --output=../../logs/${samplename}_fastq_process_%j.log ${scriptsPath}/fastq_process_and_kallisto_map.sh -s $scriptsPath --read1 $fileR1 --read2 $fileR2 -m $mintrim -M $maxtrim --outprefix $samplename --stranded ${stranded} --kalIndex ${kalIndex}))
+                        kjob_id=($(sbatch --account=co_rosalind --partition=savio2_htc --time=06:00:00 --parsable --output=../../logs/${samplename}_fastq_process_%j.log ${scriptsPath}/fastq_process_and_kallisto_map.sh -s $scriptsPath --read1 $fileR1 --read2 $fileR2 -m $mintrim -M $maxtrim --outprefix $samplename --stranded ${stranded} --kalIndex ${kalIndex}))
                         if [ -z $kallisto_jobids ];then
                                 kallisto_jobids=`echo "${kjob_id}"`
                                 echo "first jobid"
@@ -304,7 +306,7 @@ while read -r f1 f2 f3
                         samplename=$f3                
                         untrimmedR1=$f1
                         untrimmedR2=$f2
-                        kjob_id=($(sbatch --parsable --output=../logs/${samplename}_kallisto_%j.log  -t 120 -p short --mem=15G -c 5 --wrap "kallisto quant ${kalStrand} -i ${kalIndex} -o $samplename -t 5 -b 30 ${untrimmedR1} ${untrimmedR2}"))
+                        kjob_id=($(sbatch --parsable --output=../logs/${samplename}_kallisto_%j.log  --account=co_rosalind --time=03:00:00 --partition=savio2_htc --cpus-per-task=6 --wrap "kallisto quant ${kalStrand} -i ${kalIndex} -o $samplename -t 6 -b 30 ${untrimmedR1} ${untrimmedR2}"))
                         if [ -z $kallisto_jobids ];then
                                 kallisto_jobids=`echo "${kjob_id}"`
                                 echo "first jobid ${kjob_id}"
@@ -343,7 +345,7 @@ while read -r f1 f2
                         fragmentlength=200
                         fragmentstdev=30
                         
-                        kjob_id=($(sbatch --parsable --output=../logs/${samplename}_kallisto_%j.log  -t 120 -p short --mem=15G -c 5 --wrap "kallisto quant ${kalStrand} -l ${fragmentlength} -s ${fragmentstdev} -i ${kalIndex} -o $samplename --single -t 5 -b 30 ${fastq}"))
+                        kjob_id=($(sbatch --parsable --output=../logs/${samplename}_kallisto_%j.log  --account=co_rosalind --time=02:00:00 --partition=savio2_htc --cpus-per-task=6 --wrap "kallisto quant ${kalStrand} -l ${fragmentlength} -s ${fragmentstdev} -i ${kalIndex} -o $samplename --single -t 6 -b 30 ${fastq}"))
                         if [ -z $kallisto_jobids ];then
                                 kallisto_jobids=`echo "${kjob_id}"`
                                 echo "first jobid ${kjob_id}"
@@ -370,7 +372,7 @@ echo "kallisto job ids: ${kallisto_jobids}"
 ### note, now removing weird chromosomes at this step
 echo -e "\n\n setting up GTF filter script sbatch"
 
-echo -e '#!/bin/bash\n#SBATCH -p short\n#SBATCH -t 300\n#SBATCH --mem=20G\n#SBATCH \n#SBATCH -o r_scripts.out\n\nRscript '${scriptsPath}'/gtf_filter_from_tpms.R '${tpm}' '${numSamples}' '${gtf}' '${expname}' '${txInfo}' '${cleanChrsizes}'' > gtf_filter_script.sh
+echo -e '#!/bin/bash\n#SBATCH --account=co_rosalind\n#SBATCH --time=03:00:00\n#SBATCH --partition=savio2_htc\n#SBATCH \n#SBATCH -o r_scripts.out\n\nRscript '${scriptsPath}'/gtf_filter_from_tpms.R '${tpm}' '${numSamples}' '${gtf}' '${expname}' '${txInfo}' '${cleanChrsizes}'' > gtf_filter_script.sh
 
 gtf_filter_job_id=($(sbatch --output=logs/${expname}_gtf_filter_%j.log --parsable --dependency=afterok:$kallisto_jobids gtf_filter_script.sh))
 
@@ -386,7 +388,7 @@ fi
 
 echo "call TSS and TES dominant from RNA-seq kallisto counts"
 
-echo -e '#!/bin/bash\n#SBATCH -p short\n#SBATCH -t 150\n#SBATCH --mem=20G\n#SBATCH \n#SBATCH -o r_scripts.out\n\nRscript '${scriptsPath}'/kallisto_tss_tes_call.r '${expname}'_avg_tpms_all_tx.txt '${gtf}' '${expname}' '${cleanChrsizes}'' > kallisto_tss_tes_rscript.sh
+echo -e '#!/bin/bash\n#SBATCH --account=co_rosalind\n#SBATCH --time=03:00:00\n#SBATCH --partition=savio2_htc\n#SBATCH \n#SBATCH -o r_scripts.out\n\nRscript '${scriptsPath}'/kallisto_tss_tes_call.r '${expname}'_avg_tpms_all_tx.txt '${gtf}' '${expname}' '${cleanChrsizes}'' > kallisto_tss_tes_rscript.sh
 
 kallist_tss_tes_call_job_id=($(sbatch --output=logs/${expname}_kallist_tss_tes_call_rscript_%j.log --parsable --dependency=afterok:$gtf_filter_job_id kallisto_tss_tes_rscript.sh))
 
@@ -399,12 +401,12 @@ if [ "$useProseq" -eq 1 ]; then
 
 echo "setting up TSScall jobs"
 
-tsscall_jobid=($(sbatch -p ${tsscallPartition} -t ${tsscallTime} --mem=80G --output=logs/${expname}_TSScall_%j.log --parsable --dependency=afterok:$kallist_tss_tes_call_job_id --wrap "python ${scriptsPath}/TSScall-master/TSScall.py --annotation_file ${gtf} --detail_file ${expname}_TSScall_detail_file --set_read_threshold ${tsscallMin} --annotation_join_distance 500 --annotation_search_window ${tsscallWindow} ${proseqFwd} ${proseqRev} ${chrsizes} ${expname}_TSScall_output.bed"))
+tsscall_jobid=($(sbatch --account=co_rosalind --time=03:00:00 --partition=savio2_htc --output=logs/${expname}_TSScall_%j.log --parsable --dependency=afterok:$kallist_tss_tes_call_job_id --wrap "python ${scriptsPath}/TSScall-master/TSScall.py --annotation_file ${gtf} --detail_file ${expname}_TSScall_detail_file --set_read_threshold ${tsscallMin} --annotation_join_distance 500 --annotation_search_window ${tsscallWindow} ${proseqFwd} ${proseqRev} ${chrsizes} ${expname}_TSScall_output.bed"))
 
-tssclassify_jobid=($(sbatch -p short -t 300 --mem=50G --output=logs/${expname}_tssclassify_%j.log --parsable --dependency=afterok:$tsscall_jobid --wrap "perl ${scriptsPath}/TSScall-master/TSSclassify.pl ${expname}_TSScall_detail_file ${gtf} > ${expname}_TSScall_detail_file_TSSclassify"))
+tssclassify_jobid=($(sbatch --account=co_rosalind --time=03:00:00 --partition=savio2_htc --output=logs/${expname}_tssclassify_%j.log --parsable --dependency=afterok:$tsscall_jobid --wrap "perl ${scriptsPath}/TSScall-master/TSSclassify.pl ${expname}_TSScall_detail_file ${gtf} > ${expname}_TSScall_detail_file_TSSclassify"))
 
 ## note this step removes the weird chromosomes from the TSS call outputs
-echo -e '#!/bin/bash\n#SBATCH -p short\n#SBATCH -t 300\n#SBATCH --mem=20G\n#SBATCH \n#SBATCH -o r_scripts.out\n\nRscript '${scriptsPath}'/TSScall_cleanup_script.r '${expname}'_TSScall_detail_file_TSSclassify '${expname}' '${rlibpath}' '${cleanChrsizes}' '${tpm}'' > tsscall_cleanup_rscript.sh
+echo -e '#!/bin/bash\n#SBATCH --account=co_rosalind\n#SBATCH --time=03:00:00\n#SBATCH --partition=savio2_htc\n#SBATCH \n#SBATCH -o r_scripts.out\n\nRscript '${scriptsPath}'/TSScall_cleanup_script.r '${expname}'_TSScall_detail_file_TSSclassify '${expname}' '${rlibpath}' '${cleanChrsizes}' '${tpm}'' > tsscall_cleanup_rscript.sh
 
 tss_clean_dominant_job_id=($(sbatch --output=logs/${expname}_tsscall_cleanup_dominant_rscript_%j.log --parsable --dependency=afterok:$tssclassify_jobid tsscall_cleanup_rscript.sh))
 
@@ -413,7 +415,7 @@ tss_clean_dominant_job_id=($(sbatch --output=logs/${expname}_tsscall_cleanup_dom
 
 #### Use kallisto counts to call dominant TESs on TSS call
 
-echo -e '#!/bin/bash\n#SBATCH -p short\n#SBATCH -t 150\n#SBATCH --mem=20G\n#SBATCH \n#SBATCH -o r_scripts.out\n\nRscript '${scriptsPath}'/tsscall_kallisto_tes.r '${expname}'_avg_tpms_all_tx.txt '${expname}'_FINAL_Dominant_obsTSS_perGeneID_List.txt '${expname}' '${gtf}'' > tsscall_TES_rscript.sh
+echo -e '#!/bin/bash\n#SBATCH --account=co_rosalind\n#SBATCH --time=03:00:00\n#SBATCH --partition=savio2_htc\n#SBATCH \n#SBATCH -o r_scripts.out\n\nRscript '${scriptsPath}'/tsscall_kallisto_tes.r '${expname}'_avg_tpms_all_tx.txt '${expname}'_FINAL_Dominant_obsTSS_perGeneID_List.txt '${expname}' '${gtf}'' > tsscall_TES_rscript.sh
 
 tsscall_TES_call_job_id=($(sbatch --output=logs/${expname}_tsscall_TES_call_rscript_%j.log --parsable --dependency=afterok:$tss_clean_dominant_job_id tsscall_TES_rscript.sh))
 
@@ -430,9 +432,9 @@ fi
 if [ "$useProseq" -eq 1 ]; then
   tsscall_TES_call_kallist_tss_tes_call_job_ids=`echo "${tsscall_TES_call_job_id},${kallist_tss_tes_call_job_id}"`
   
-  echo -e '#!/bin/bash\n#SBATCH -p short\n#SBATCH -t 150\n#SBATCH --mem=20G\n#SBATCH \n#SBATCH -o r_scripts.out\n\nRscript '${scriptsPath}'/TSScall_kallisto_meged_annotations.r '${expname}'_Kallisto_called_dominant_TSS_to_TES_clusters.txt '${expname}'_FINAL_Dominant_obsTSS_and_TES_perGeneID_List.txt '${expname}'_avg_tpms_all_tx.txt '${expname}' '${tpm}'' > kallisto_tsscall_merge_rscript.sh
+  echo -e '#!/bin/bash\n#SBATCH --account=co_rosalind\n#SBATCH --time=03:00:00\n#SBATCH --partition=savio2_htc\n#SBATCH \n#SBATCH -o r_scripts.out\n\nRscript '${scriptsPath}'/TSScall_kallisto_meged_annotations.r '${expname}'_Kallisto_called_dominant_TSS_to_TES_clusters.txt '${expname}'_FINAL_Dominant_obsTSS_and_TES_perGeneID_List.txt '${expname}'_avg_tpms_all_tx.txt '${expname}' '${tpm}'' > kallisto_tsscall_merge_rscript.sh
 
-  merge_job_id=($(sbatch -p short -t 30 --mem=10G --output=logs/${expname}_TSScall_kallist_merge_%j.log --parsable --dependency=afterok:$tsscall_TES_call_kallist_tss_tes_call_job_ids kallisto_tsscall_merge_rscript.sh ${expname}))
+  merge_job_id=($(sbatch --account=co_rosalind --time=03:00:00 --partition=savio2_htc --output=logs/${expname}_TSScall_kallist_merge_%j.log --parsable --dependency=afterok:$tsscall_TES_call_kallist_tss_tes_call_job_ids kallisto_tsscall_merge_rscript.sh ${expname}))
 
 
 #Rscript ${scriptsPath}/TSScall_kallisto_meged_annotations.r ${expname}_Kallisto_called_dominant_TSS_to_TES_clusters.txt ${expname}_FINAL_Dominant_obsTSS_and_TES_perGeneID_List.txt ${expname}/${expname}_avg_tpms_all_tx.txt ${expname}
@@ -451,9 +453,9 @@ fi
 ##### get GTF for TSS to TES transcripts
 if [ "$useProseq" -eq 1 ]; then
   
-  echo -e '#!/bin/bash\n#SBATCH -p short\n#SBATCH -t 45\n#SBATCH --mem=20G\n#SBATCH \n#SBATCH -o r_scripts.out\n\nRscript '${scriptsPath}'/get_dominant_TSS_to_TES_stable_transcripts_gtf.r '${expname}'_Dominant.TSS.TES.calls_WORKING_FILE.txt '$gtf' '${expname}'_Dominant.Affiliated.ActiveTranscripts_forfeaturecounts.gtf' > make_tss_to_tes_transcripts_gtf_rscript.sh
+  echo -e '#!/bin/bash\n#SBATCH --account=co_rosalind\n#SBATCH --time=03:00:00\n#SBATCH --partition=savio2_htc\n#SBATCH \n#SBATCH -o r_scripts.out\n\nRscript '${scriptsPath}'/get_dominant_TSS_to_TES_stable_transcripts_gtf.r '${expname}'_Dominant.TSS.TES.calls_WORKING_FILE.txt '$gtf' '${expname}'_Dominant.Affiliated.ActiveTranscripts_forfeaturecounts.gtf' > make_tss_to_tes_transcripts_gtf_rscript.sh
 
-  tss_tes_gtf_job_id=($(sbatch -p short -t 30 --mem=10G --output=logs/${expname}_make_tss_to_tes_transcripts_gtf_%j.log --parsable --dependency=afterok:$merge_job_id make_tss_to_tes_transcripts_gtf_rscript.sh ${expname}))
+  tss_tes_gtf_job_id=($(sbatch --account=co_rosalind --time=03:00:00 --partition=savio2_htc --output=logs/${expname}_make_tss_to_tes_transcripts_gtf_%j.log --parsable --dependency=afterok:$merge_job_id make_tss_to_tes_transcripts_gtf_rscript.sh ${expname}))
 
 fi
 
@@ -463,10 +465,10 @@ fi
 
 if [ "$useProseq" -eq 1 ]; then
  
-  final_file_cleanup_job_id=($(sbatch -p short -t 20 --mem=1G --output=logs/${expname}_final_file_cleanup_%j.log --parsable --dependency=afterok:$tss_tes_gtf_job_id ${scriptsPath}/clean_up_files.sh ${expname} ${admin}))
+  final_file_cleanup_job_id=($(sbatch --account=co_rosalind --time=01:00:00 --partition=savio2_htc --output=logs/${expname}_final_file_cleanup_%j.log --parsable --dependency=afterok:$tss_tes_gtf_job_id ${scriptsPath}/clean_up_files.sh ${expname} ${admin}))
 
 else
-  final_file_cleanup_job_id=($(sbatch -p short -t 20 --mem=1G --output=logs/${expname}_final_file_cleanup_%j.log --parsable --dependency=afterok:$kallist_tss_tes_call_job_id ${scriptsPath}/clean_up_files.sh ${expname} 1))
+  final_file_cleanup_job_id=($(sbatch --account=co_rosalind --time=01:00:00 --partition=savio2_htc --output=logs/${expname}_final_file_cleanup_%j.log --parsable --dependency=afterok:$kallist_tss_tes_call_job_id ${scriptsPath}/clean_up_files.sh ${expname} 1))
 
 fi
 
