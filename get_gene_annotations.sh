@@ -63,7 +63,7 @@ optional arguments:
 
 
 #some of these are setup as defaults, which can be overriden, while others need to be entered
-
+scriptsPath=/global/scratch/users/chadbstein/software/GetGeneAnnotation_GGA_Savio
 manifest=
 gtf=
 processfastq=1
