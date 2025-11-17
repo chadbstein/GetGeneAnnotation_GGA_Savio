@@ -13,18 +13,22 @@ print(args)
 
 tpmThresh <- as.numeric(args[1])
 sampThresh <- as.numeric(args[2])
+print("Reading in GTF\n")
 gtfOrig <- read.table(args[3],sep="\t", stringsAsFactors = F, quote="")
 outputPrefix <- args[4]
+print("Reading in Tx file\n")
 txinfo <- read.table(args[5],sep="\t", stringsAsFactors = F, header=F)[,1:8]
 colnames(txinfo) <- c("aTxID","Chr","Start","Stop","Strand","GeneID","GeneName","GeneType")
 #note, added an a to "aTxID" to help with sorting later (so that header stays at top)
 
 #read in clean Chr list
+print("Reading in Chr size file\n")
 cleanChr <- read.table(args[6],sep="\t",header=F)$V1
 
 #read in abundFiles, make TPM matrix, and call transcripts passing filter
 abunFiles <- dir(Sys.glob(file.path(paste0(args[4],"/*"))), pattern = "abundance.tsv", full.names = T)
 abunList <- vector("list", length(abunFiles))
+print("Reading in Abundance files\n")
 for (i in 1:length(abunFiles)){
   abunList[[i]] <- read.table(abunFiles[i], header = T, sep = "\t", row.names = 1)
 }
