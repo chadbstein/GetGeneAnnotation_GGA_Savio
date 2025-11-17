@@ -9,6 +9,7 @@ print(args)
 # 4) output name for gtf
 # 5) transcript info file
 # 6) clean Chr file
+# 7) kallisto output directory (contains subdirs with abundance.tsv files)
 
 
 tpmThresh <- as.numeric(args[1])
@@ -26,7 +27,7 @@ print("Reading in Chr size file\n")
 cleanChr <- read.table(args[6],sep="\t",header=F)$V1
 
 #read in abundFiles, make TPM matrix, and call transcripts passing filter
-abunFiles <- dir(Sys.glob(file.path(paste0(args[4],"/*"))), pattern = "abundance.tsv", full.names = T)
+abunFiles <- list.files(path = args[7], pattern = "abundance.tsv", full.names = TRUE, recursive = TRUE)
 abunList <- vector("list", length(abunFiles))
 print("Reading in Abundance files\n")
 for (i in 1:length(abunFiles)){
