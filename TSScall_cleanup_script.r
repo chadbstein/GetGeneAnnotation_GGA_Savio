@@ -13,8 +13,9 @@ print(args)
 
 #load stringr package
   libDir <- args[3]
-  library(stringr,lib.loc=libDir)
-
+  #library(stringr,lib.loc=libDir)
+  library(stringr)
+  
 
 # read in clean chromosome list
 cleanChr <- read.table(args[4],sep="\t",header=F)$V1
